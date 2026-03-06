@@ -1,0 +1,107 @@
+WITH
+
+-- CTE: LETALIDADE - Filtra ocorrências letais com envolvimento de militar em serviço
+LETALIDADE AS (
+    SELECT
+        OCO.numero_ocorrencia,
+        ENV.digitador_id_orgao,
+        OCO.natureza_codigo AS natureza_ocorrencia_codigo,
+        OCO.data_hora_fato,
+        ENV.ind_militar_policial_servico
+    FROM db_bisp_reds_reporting.tb_ocorrencia OCO
+    INNER JOIN db_bisp_reds_reporting.tb_envolvido_ocorrencia ENV
+        ON OCO.numero_ocorrencia = ENV.numero_ocorrencia
+    WHERE 1 = 1
+        AND OCO.natureza_codigo IN ('B01121','B01129') 
+        AND ENV.id_envolvimento IN (35,36,44) 
+        AND ENV.ind_militar_policial IS NOT DISTINCT FROM 'M'
+        AND ENV.ind_militar_policial_servico IS NOT DISTINCT FROM 'S' 
+        AND ENV.orgao_lotacao_policial_sigla = 'PM' 
+        AND YEAR(OCO.data_hora_fato) = 2025
+),
+
+-- CTE: BD_IMV - Envolvidos com óbito (condição física 0100) e que não são letalidade calculada na CTE anterior
+BD_IMV AS (
+    SELECT
+        OCO.numero_ocorrencia,                                   -- Identificador da ocorrência
+        ENV.envolvimento_codigo,                                 -- Código que representa o tipo de envolvimento (ex: vítima, testemunha, etc.)
+        ENV.envolvimento_descricao,                              -- Descrição textual do tipo de envolvimento
+        ENV.numero_envolvido,                                    -- Número sequencial do envolvido na ocorrência
+
+        -- Chave única construída com nome, nome da mãe e data de nascimento, com tratamento de casos desconhecidos
+        CONCAT(
+            CASE
+                WHEN UPPER(ENV.nome_completo_envolvido) IS NULL OR TRIM(UPPER(ENV.nome_completo_envolvido)) = ''
+                     OR UPPER(ENV.nome_completo_envolvido) LIKE '%DESCONHECID%' OR UPPER(ENV.nome_completo_envolvido) LIKE '%IGNORAD%'
+                     OR UPPER(ENV.nome_completo_envolvido) LIKE '%IDENTIFICA%' THEN
+                    CONCAT('DESCONHECIDO ', CAST(SUBSTRING(ENV.numero_ocorrencia, 6, 9) AS STRING), '0', CAST(ENV.numero_envolvido AS STRING))
+                ELSE UPPER(ENV.nome_completo_envolvido)
+            END,
+            '-',
+            CASE
+                WHEN UPPER(ENV.nome_mae) IS NULL OR TRIM(UPPER(ENV.nome_mae)) = ''
+                     OR UPPER(ENV.nome_mae) LIKE '%DESCONHECID%' OR UPPER(ENV.nome_mae) LIKE '%IGNORAD%' OR UPPER(ENV.nome_mae) LIKE '%IDENTIFICA%' THEN
+                    CONCAT(' MAE ', CAST(SUBSTRING(ENV.numero_ocorrencia, 6, 9) AS STRING), '0', CAST(ENV.numero_envolvido AS STRING))
+                ELSE UPPER(ENV.nome_mae)
+            END,
+            '-',
+            CASE
+                WHEN COALESCE(CAST(ENV.data_nascimento AS STRING), '') = '' THEN
+                    CONCAT('CAMPO NULO ', CAST(SUBSTRING(ENV.numero_ocorrencia, 6, 9) AS STRING), '0', CAST(ENV.numero_envolvido AS STRING))
+                ELSE CAST(ENV.data_nascimento AS STRING)
+            END
+        ) AS chave_envolvido,
+
+        -- Tratamento do nome do envolvido: se inválido ou ausente, gera rótulo "DESCONHECIDO"
+        CASE
+            WHEN UPPER(ENV.nome_completo_envolvido) IS NULL OR TRIM(UPPER(ENV.nome_completo_envolvido)) = ''
+                 OR UPPER(ENV.nome_completo_envolvido) LIKE '%DESCONHECID%' OR UPPER(ENV.nome_completo_envolvido) LIKE '%IGNORAD%'
+                 OR UPPER(ENV.nome_completo_envolvido) LIKE '%IDENTIFICAD%' THEN
+                CONCAT('DESCONHECIDO ', CAST(SUBSTRING(ENV.numero_ocorrencia, 6, 9) AS STRING), '0', CAST(ENV.numero_envolvido AS STRING))
+            ELSE UPPER(ENV.nome_completo_envolvido)
+        END AS nome_completo_envolvido,
+
+        -- Tratamento do nome da mãe: se inválido ou ausente, gera rótulo "MÃE"
+        CASE
+            WHEN UPPER(ENV.nome_mae) IS NULL OR TRIM(UPPER(ENV.nome_mae)) = ''
+                 OR UPPER(ENV.nome_mae) LIKE '%DESCONHECID%' OR UPPER(ENV.nome_mae) LIKE '%IGNORAD%' OR UPPER(ENV.nome_mae) LIKE '%IDENTIFICA%' THEN
+                CONCAT('MÃE ', CAST(SUBSTRING(ENV.numero_ocorrencia, 6, 9) AS STRING), '0', CAST(ENV.numero_envolvido AS STRING))
+            ELSE UPPER(ENV.nome_mae)
+        END AS nome_mae
+
+    FROM db_bisp_reds_reporting.tb_ocorrencia OCO
+    INNER JOIN db_bisp_reds_reporting.tb_envolvido_ocorrencia ENV ON OCO.numero_ocorrencia = ENV.numero_ocorrencia
+    LEFT JOIN LETALIDADE LET ON OCO.numero_ocorrencia = LET.numero_ocorrencia
+    WHERE 1 = 1
+        AND LET.numero_ocorrencia IS NULL 
+        AND ENV.id_envolvimento IN (25,32,1097,26,27,28,872) 
+        AND OCO.ind_estado = 'F' 
+        AND ENV.condicao_fisica_codigo = '0100' 
+        AND OCO.ocorrencia_uf = 'MG' 
+        AND ENV.natureza_ocorrencia_codigo IN ('B01121','C01157','B02001','B01129','B01148','B01504') 
+        AND OCO.digitador_sigla_orgao IN ('PM','PC') 
+        AND OCO.nome_tipo_relatorio IN ('POLICIAL','REFAP') 
+        AND OCO.local_imediato_codigo NOT IN ('1302','1310') 
+        AND YEAR(OCO.data_hora_fato) = 2025 
+        AND (OCO.unidade_responsavel_registro_nome LIKE '%/2 RPM' OR OCO.unidade_responsavel_registro_nome LIKE '%/2RPM' OR OCO.unidade_responsavel_registro_nome LIKE '%/2 CIA PM IND PVD%')
+),
+
+QTDE_IMV AS (
+    SELECT
+        IMV.numero_ocorrencia,
+        COUNT(*) AS total_vitimas_imv
+    FROM BD_IMV IMV
+    GROUP BY IMV.numero_ocorrencia
+)
+
+SELECT
+    OCO.numero_ocorrencia,
+    QTDE_IMV.total_vitimas_imv
+FROM db_bisp_reds_reporting.tb_ocorrencia OCO
+LEFT JOIN QTDE_IMV ON OCO.numero_ocorrencia = QTDE_IMV.numero_ocorrencia
+WHERE
+    OCO.digitador_id_orgao = 0 AND
+    OCO.ind_estado = 'F' AND
+    OCO.ocorrencia_uf = 'MG' AND
+    YEAR(OCO.data_hora_fato) = 2025 AND
+    (OCO.unidade_responsavel_registro_nome LIKE '%/2 RPM' OR OCO.unidade_responsavel_registro_nome LIKE '%/2RPM' OR OCO.unidade_responsavel_registro_nome LIKE '%/2 CIA PM IND PVD%')
