@@ -33,7 +33,7 @@ SELECT
 
     -- [DADOS DO EVENTO ORIGEM (U33004)]
     OCO.numero_ocorrencia, 
-    FROM_TIMESTAMP(OCO.data_hora_fato, 'dd/MM/yy HH:mm') AS data_hora_fato,
+    FROM_TIMESTAMP(OCO.data_hora_fato, 'dd/MM/yy') AS data_hora_fato,
     
     -- [DADOS DA ÚLTIMA VISITA REALIZADA (A20002)]
     CASE 
