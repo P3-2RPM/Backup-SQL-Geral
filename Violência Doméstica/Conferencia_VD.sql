@@ -63,9 +63,18 @@ SELECT
 FROM db_bisp_reds_reporting.tb_ocorrencia OCO
 LEFT JOIN db_bisp_reds_reporting.tb_envolvido_ocorrencia ENV 
     ON OCO.numero_ocorrencia = ENV.numero_ocorrencia
-FULL JOIN (
-    SELECT DISTINCT numero_chamada, id_evento 
-    FROM db_bisp_cad_reporting.vw_chamada_evento
+LEFT JOIN (
+    SELECT 
+        numero_chamada, 
+        id_evento
+    FROM (
+        SELECT 
+            numero_chamada, 
+            id_evento,
+            ROW_NUMBER() OVER (PARTITION BY numero_chamada ORDER BY id_evento ASC) as rnk
+        FROM db_bisp_cad_reporting.vw_chamada_evento
+    ) sub
+    WHERE rnk = 1 -- Garante apenas a primeira chamada vinculada
 ) CHAMADA ON OCO.numero_chamada_cad = CHAMADA.numero_chamada
 LEFT JOIN db_bisp_reds_master.tb_ocorrencia_setores_geodata AS geo 
     ON OCO.numero_ocorrencia = geo.numero_ocorrencia 			
