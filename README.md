@@ -22,7 +22,8 @@ Este repositório centraliza todos os scripts e consultas SQL utilizados para ex
 ## 🚀 Como utilizar
 1. Navegue até a pasta desejada.
 2. Abra o arquivo `.sql`.
-3. Copie o código e execute no seu gestor de banco de dados (Oracle, SQL Server, etc.).
+3. Copie o código e execute no seu gestor de banco de dados (geralmente o DBeaver, Oracle, SQL Server, etc.).
+4. Lembrando que o programa tem que estar configurado para acesso a BISP.
 
 ## 🛠️ Manutenção
 Para manter este backup atualizado, novos scripts devem ser submetidos via **Upload** diretamente nas pastas temáticas para garantir a organização.
