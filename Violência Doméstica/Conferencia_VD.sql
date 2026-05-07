@@ -38,7 +38,7 @@ SELECT
     -- [DADOS DA ÚLTIMA VISITA REALIZADA (A20002)]
     CASE 
         WHEN VP.ID_UNICO_VISITA IS NOT NULL AND VP.data_fato_ultima_visita > OCO.data_hora_fato THEN 'SIM'
-        ELSE 'NÃO'
+        ELSE 'NAO'
     END AS vitima_recebeu_visita_posterior,
     
     VP.num_reds_ultima_visita AS numero_reds_ultima_visita,
@@ -52,18 +52,18 @@ SELECT
     COALESCE(MUB.ueop, 'SEM INFORMAÇÃO') AS ueop,
     COALESCE(MUB.cia, 'SEM INFORMAÇÃO') AS cia,
     OCO.nome_municipio AS Municipio_Fato,
-
+     
     -- [AVALIAÇÃO DE RISCO]
     VD.id_avaliacao_risco_motivo,
     CASE 
         WHEN VD.id_avaliacao_risco_motivo IS NULL OR VD.id_avaliacao_risco_motivo IN (3, 4) THEN 'NAO'
         ELSE 'SIM'
     END AS preencheu_formulario
-
+    
 FROM db_bisp_reds_reporting.tb_ocorrencia OCO
 LEFT JOIN db_bisp_reds_reporting.tb_envolvido_ocorrencia ENV 
     ON OCO.numero_ocorrencia = ENV.numero_ocorrencia
-LEFT JOIN (
+/*LEFT JOIN (
     SELECT 
         numero_chamada, 
         id_evento
@@ -75,15 +75,36 @@ LEFT JOIN (
         FROM db_bisp_cad_reporting.vw_chamada_evento
     ) sub
     WHERE rnk = 1 -- Garante apenas a primeira chamada vinculada
-) CHAMADA ON OCO.numero_chamada_cad = CHAMADA.numero_chamada
+) CHAMADA ON OCO.numero_chamada_cad = CHAMADA.numero_chamada*/
 LEFT JOIN db_bisp_reds_master.tb_ocorrencia_setores_geodata AS geo 
     ON OCO.numero_ocorrencia = geo.numero_ocorrencia 			
 LEFT JOIN db_bisp_shared.tb_pmmg_setores_geodata AS MUB  
     ON geo.setor_codigo = MUB.setor_codigo 
+
+-- JOIN COM A TABELA DE AVALIAÇÃO DE RISCO - INFELIZMENTE FOI IDENTIFICADO ANOMALIAS PARA 2 SITUAÇÕES DE AVALIAÇÃO DE RISCO PRA MESMA VÍTIMA
 LEFT JOIN (
-    SELECT DISTINCT numero_ocorrencia, id_avaliacao_risco_motivo 
-    FROM db_bisp_reds_reporting.tb_avaliacao_risco_vd
-) VD ON OCO.numero_ocorrencia = VD.numero_ocorrencia   
+    SELECT 
+        numero_ocorrencia, 
+        id_avaliacao_risco_motivo
+    FROM (
+        SELECT 
+            numero_ocorrencia, 
+            id_avaliacao_risco_motivo,
+            ROW_NUMBER() OVER (
+                PARTITION BY numero_ocorrencia 
+                ORDER BY CASE 
+                    WHEN id_avaliacao_risco_motivo = 1 THEN 1
+                    WHEN id_avaliacao_risco_motivo = 2 THEN 2
+                    WHEN id_avaliacao_risco_motivo = 5 THEN 3
+                    WHEN id_avaliacao_risco_motivo = 4 THEN 4
+                    WHEN id_avaliacao_risco_motivo = 3 THEN 5
+                    ELSE 6 
+                END ASC
+            ) as rnk_prioridade
+        FROM db_bisp_reds_reporting.tb_avaliacao_risco_vd
+    ) sub_vd
+    WHERE rnk_prioridade = 1 -- Garante apenas o motivo mais importante conforme sua regra
+) VD ON OCO.numero_ocorrencia = VD.numero_ocorrencia 
 
 -- JOIN COM A ÚLTIMA VISITA
 LEFT JOIN VISITAS_PREVENCAO VP 
@@ -92,9 +113,22 @@ LEFT JOIN VISITAS_PREVENCAO VP
 
 WHERE YEAR(OCO.data_hora_fato) >= 2026
 	AND OCO.codigo_municipio IN (310670, 310810, 310900, 311860, 312060, 312410, 312600, 312980, 313010, 313220, 313665, 314015, 314070, 315040, 315460, 315530, 316292, 316553)
-	AND (OCO.natureza_codigo = 'U33004' OR OCO.natureza_secundaria1_codigo = 'U33004' OR OCO.natureza_secundaria2_codigo = 'U33004' OR OCO.natureza_secundaria3_codigo = 'U33004')
-	AND OCO.natureza_codigo not in ('A20002')
 	AND OCO.ocorrencia_uf = 'MG'
     AND OCO.digitador_sigla_orgao IN ('PM', 'PC')
-    AND ENV.codigo_sexo = 'F'
-    AND ENV.envolvimento_codigo IN ('1300', '1399', '1301', '1302', '1303', '1304', '1305');
+    AND (ENV.codigo_sexo = 'F' OR identidade_genero_codigo IN ('0400','0200','0700','0100','0600'))  --Inclui somente envolvidas do sexo feminino Ou com outras identidades de gênero especificadas
+    AND ENV.envolvimento_codigo IN ('1300', '1399', '1301', '1302', '1303', '1304', '1305') -- Filtra apenas vítimas
+    AND (	
+	   			SUBSTRING(OCO.natureza_codigo, 1, 1) <> 'A'   -- Filtra código da natureza principal diferente do grupo A
+			    AND (OCO.natureza_secundaria1_codigo = 'U33004'
+					   OR OCO.natureza_secundaria2_codigo = 'U33004'
+					   OR OCO.natureza_secundaria3_codigo = 'U33004') -- Filtra código de natureza secundária  U33004
+			    OR ( OCO.natureza_codigo = 'U33004'
+			         AND ((SUBSTRING(OCO.natureza_secundaria1_codigo , 1, 1) IN ('B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'T') 
+					   			AND OCO.natureza_secundaria1_codigo NOT IN ('T00007', 'T00008', 'T00009', 'T10161', 'T99000') ) 
+					   	   	OR  (SUBSTRING(OCO.natureza_secundaria2_codigo , 1, 1) IN ('B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'T')  
+					   			AND OCO.natureza_secundaria2_codigo NOT IN ('T00007', 'T00008', 'T00009', 'T10161', 'T99000') ) 
+					   		OR  (SUBSTRING(OCO.natureza_secundaria3_codigo , 1, 1) IN ('B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'T')  
+					   			AND OCO.natureza_secundaria3_codigo NOT IN ('T00007', 'T00008', 'T00009', 'T10161', 'T99000') ) 
+					   	 )
+   					) -- Filtra código da natureza principal U33004 com natureza secundária de crime
+	       );
