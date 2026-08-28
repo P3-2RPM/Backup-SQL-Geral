@@ -34,7 +34,7 @@ WHERE 1 = 1
         WHERE alfacinco.natureza_codigo = 'A05000'
           AND alfacinco.digitador_sigla_orgao = 'PM'
           AND YEAR(alfacinco.data_hora_fato) >= 2026
-          AND MONTH(alfacinco.data_hora_fato) >= 5 -- [ATENÇÃO]: Mudar para >= 6 em Junho
+          AND MONTH(alfacinco.data_hora_fato) >= 6
           AND (alfacinco.unidade_responsavel_registro_nome LIKE '%/2 RPM%' 
                OR alfacinco.unidade_responsavel_registro_nome LIKE '%/2RPM%')
     )
