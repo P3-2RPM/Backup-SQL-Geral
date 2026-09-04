@@ -48,10 +48,15 @@ SELECT
     ENV.nome_completo_envolvido,
     ENV.data_nascimento,
     OCO.natureza_descricao,
-    COALESCE(MUB.udi, 'SEM INFORMAÇÃO') AS udi,
-    COALESCE(MUB.ueop, 'SEM INFORMAÇÃO') AS ueop,
-    COALESCE(MUB.cia, 'SEM INFORMAÇÃO') AS cia,
+    GEO.udi,
+    GEO.ueop,
+    GEO.cia,
     OCO.nome_municipio AS Municipio_Fato,
+    
+    -- [DADOS DO REGISTRO]
+    OCO.digitador_matricula,
+    OCO.digitador_nome,
+    OCO.responsavel_apreensao_matricula,
      
     -- [AVALIAÇÃO DE RISCO]
     VD.id_avaliacao_risco_motivo,
@@ -78,8 +83,6 @@ LEFT JOIN db_bisp_reds_reporting.tb_envolvido_ocorrencia ENV
 ) CHAMADA ON OCO.numero_chamada_cad = CHAMADA.numero_chamada*/
 LEFT JOIN db_bisp_reds_master.tb_ocorrencia_setores_geodata AS geo 
     ON OCO.numero_ocorrencia = geo.numero_ocorrencia 			
-LEFT JOIN db_bisp_shared.tb_pmmg_setores_geodata AS MUB  
-    ON geo.setor_codigo = MUB.setor_codigo 
 
 -- JOIN COM A TABELA DE AVALIAÇÃO DE RISCO - INFELIZMENTE FOI IDENTIFICADO ANOMALIAS PARA 2 SITUAÇÕES DE AVALIAÇÃO DE RISCO PRA MESMA VÍTIMA
 LEFT JOIN (
@@ -103,7 +106,7 @@ LEFT JOIN (
             ) as rnk_prioridade
         FROM db_bisp_reds_reporting.tb_avaliacao_risco_vd
     ) sub_vd
-    WHERE rnk_prioridade = 1 -- Garante apenas o motivo mais importante conforme sua regra
+    WHERE rnk_prioridade = 1 -- Garante apenas o motivo mais importante conforme a regra (tem o FONAR é mais importante que não ter)
 ) VD ON OCO.numero_ocorrencia = VD.numero_ocorrencia 
 
 -- JOIN COM A ÚLTIMA VISITA
@@ -114,7 +117,7 @@ LEFT JOIN VISITAS_PREVENCAO VP
 WHERE YEAR(OCO.data_hora_fato) >= 2026
 	AND OCO.codigo_municipio IN (310670, 310810, 310900, 311860, 312060, 312410, 312600, 312980, 313010, 313220, 313665, 314015, 314070, 315040, 315460, 315530, 316292, 316553)
 	AND OCO.ocorrencia_uf = 'MG'
-    AND OCO.digitador_sigla_orgao IN ('PM', 'PC')
+    AND OCO.digitador_sigla_orgao IN ('PM')
     AND (ENV.codigo_sexo = 'F' OR identidade_genero_codigo IN ('0400','0200','0700','0100','0600'))  --Inclui somente envolvidas do sexo feminino Ou com outras identidades de gênero especificadas
     AND ENV.envolvimento_codigo IN ('1300', '1399', '1301', '1302', '1303', '1304', '1305') -- Filtra apenas vítimas
     AND (	
